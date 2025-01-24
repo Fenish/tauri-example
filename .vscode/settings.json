@@ -1,0 +1,33 @@
+{
+	"editor.tabSize": 4,
+	"editor.insertSpaces": false,
+	"editor.formatOnSave": true,
+	"editor.codeActionsOnSave": {
+		"source.fixAll.eslint": "always",
+		"source.organizeImports": "never",
+		"source.sortImports": "never",
+		"source.fixAll.ts": "always",
+		"source.addMissingImports.ts": "always",
+		"source.removeUnused.ts": "never"
+	},
+	"editor.defaultFormatter": "dbaeumer.vscode-eslint",
+	"typescript.format.enable": true,
+	"typescript.tsdk": "node_modules/typescript/lib",
+	"typescript.enablePromptUseWorkspaceTsdk": true,
+	"[typescript]": {
+		"editor.defaultFormatter": "esbenp.prettier-vscode"
+	},
+	"[javascript]": {
+		"editor.defaultFormatter": "esbenp.prettier-vscode"
+	},
+	"[vue]": {
+		"editor.defaultFormatter": "esbenp.prettier-vscode"
+	},
+	"explorer.compactFolders": false,
+	"explorer.fileNesting.enabled": true,
+	"explorer.fileNesting.patterns": {
+		"vite.config.ts": "*.d.ts",
+		"eslint.config.js": ".prettierrc, .editorconfig",
+		"README.md": "*.md, .gitignore"
+	}
+}
