@@ -6,6 +6,7 @@ fn main() {
     
     println!("cargo:rustc-link-lib=static=math");
     println!("cargo:rerun-if-changed=cpp/math.cpp");
+	println!("cargo:rustc-link-lib=lcms2");
         
     tauri_build::build()
 }

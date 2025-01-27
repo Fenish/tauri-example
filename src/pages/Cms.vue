@@ -23,13 +23,10 @@
 					<input type="radio" id="cmyk" name="conversion" value="cmyk" v-model="selectedMode" />
 					<label for="cmyk">CMYK</label>
 				</div>
+
 				<div class="radio-group">
-					<input type="radio" id="rgba" name="conversion" value="rgba" v-model="selectedMode" />
-					<label for="rgba">RGBA</label>
-				</div>
-				<div class="radio-group">
-					<input type="radio" id="cmykorbg" name="conversion" value="cmykorbg" v-model="selectedMode" />
-					<label for="cmykorbg">CMYKORBG</label>
+					<input type="radio" id="lab" name="conversion" value="lab" v-model="selectedMode" />
+					<label for="lab">LAB</label>
 				</div>
 			</div>
 
@@ -43,31 +40,16 @@
 					</div>
 				</div>
 
-				<!-- RGBA Inputs -->
-				<div v-if="selectedMode === 'rgba'" class="input-set rgba-inputs">
-					<div v-for="(value, index) in rgbaValues" :key="index" class="input-group">
-						<label>{{ ['R', 'G', 'B', 'A'][index] }}</label>
-						<input
-							type="number"
-							:min="index === 3 ? 0 : 0"
-							:max="index === 3 ? 1 : 255"
-							step="index === 3 ? 0.1 : 1"
-							placeholder="0-{{ index === 3 ? '1' : '255' }}"
-							v-model="rgbaValues[index]"
-						/>
-					</div>
-				</div>
-
-				<!-- CMYKORBG Inputs -->
-				<div v-if="selectedMode === 'cmykorbg'" class="input-set cmykorbg-inputs">
-					<div v-for="(value, index) in cmykorbgValues" :key="index" class="input-group">
-						<label>{{ ['C', 'M', 'Y', 'K', 'O', 'R', 'B', 'G'][index] }}</label>
-						<input type="number" min="0" max="100" placeholder="0-100" v-model="cmykorbgValues[index]" />
+				<!-- LAB Inputs -->
+				<div v-if="selectedMode === 'lab'" class="input-set lab-inputs">
+					<div v-for="(value, index) in labValues" :key="index" class="input-group">
+						<label>{{ ['L', 'A', 'B'][index] }}</label>
+						<input type="number" min="0" max="100" placeholder="0-100" v-model="labValues[index]" />
 					</div>
 				</div>
 			</div>
 
-			<button class="convert-btn">Convert</button>
+			<button class="convert-btn" @click="convertColor">Convert</button>
 		</div>
 
 		<!-- Color Preview Section -->
@@ -77,23 +59,18 @@
 				<div class="color-preview source-preview" :style="{ backgroundColor: sourceColor }"></div>
 				<div class="color-code">{{ sourceColorCode }}</div>
 			</div>
-			<div class="color-box">
-				<h3>Target {{ selectedMode.toUpperCase() }}</h3>
-				<div class="color-preview target-preview"></div>
-				<div class="color-code">Waiting for conversion...</div>
-			</div>
 		</div>
 	</div>
 </template>
 
 <script setup>
 import { ref, computed } from 'vue'
+import { useInvoke } from '../composables/useInvoke'
 
 const selectedMode = ref('cmyk')
 const rgb = ref({ r: 0, g: 0, b: 0 })
 const cmykValues = ref([0, 0, 0, 0]) // Array for CMYK inputs
-const rgbaValues = ref([0, 0, 0, 0]) // Array for RGBA inputs
-const cmykorbgValues = ref([0, 0, 0, 0, 0, 0, 0, 0]) // Array for CMYKORBG inputs
+const labValues = ref([0, 0, 0]) // Array for LAB inputs
 
 const sourceColor = computed(() => {
 	return `rgb(${rgb.value.r}, ${rgb.value.g}, ${rgb.value.b})`
@@ -102,6 +79,29 @@ const sourceColor = computed(() => {
 const sourceColorCode = computed(() => {
 	return `RGB(${rgb.value.r}, ${rgb.value.g}, ${rgb.value.b})`
 })
+
+async function convertColor() {
+	let command = 'rgb_to_cmyk'
+	if (selectedMode.value === 'lab') {
+		command = 'rgb_to_lab'
+	}
+
+	try {
+		const { output, time } = await useInvoke(command, {
+			r: rgb.value.r,
+			g: rgb.value.g,
+			b: rgb.value.b,
+		})
+
+		if (selectedMode.value === 'cmyk') {
+			cmykValues.value = output
+		} else {
+			labValues.value = output
+		}
+	} catch (error) {
+		console.error(error)
+	}
+}
 </script>
 
 <style scoped>

@@ -12,7 +12,11 @@ impl<R: tauri::Runtime> GenerateInvokeHandler for Builder<R> {
 			crate::cpp::calculator::calculate_multiply,
 			crate::cpp::calculator::calculate_divide,
 			crate::cpp::calculator::calculate_subtract,
-			crate::cpp::calculator::run_stress_test
+			crate::cpp::calculator::run_stress_test,
+
+			// RUST COMMANDS
+			crate::rs::cms::rgb_to_cmyk,
+			crate::rs::cms::rgb_to_lab,
 		]);
 	}
 }

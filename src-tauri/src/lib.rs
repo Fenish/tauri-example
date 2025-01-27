@@ -1,5 +1,6 @@
 pub mod command_handler;
 pub mod cpp;
+pub mod rs;
 
 use command_handler::GenerateInvokeHandler;
 
