@@ -1,12 +1,13 @@
-import { defineConfig } from 'vite';
-import vue from '@vitejs/plugin-vue';
-import tailwindcss from '@tailwindcss/vite';
 import AutoImport from 'unplugin-auto-import/vite';
-import Components from 'unplugin-vue-components/vite';
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers';
+import Components from 'unplugin-vue-components/vite';
+import { defineConfig } from 'vite';
+
+import tailwindcss from '@tailwindcss/vite';
+import vue from '@vitejs/plugin-vue';
 
 // @ts-expect-error process is a nodejs global
-const host = process.env.TAURI_DEV_HOST;
+const host = process.env.TAURI_DEV_HOST
 
 // https://vitejs.dev/config/
 export default defineConfig(async () => ({
@@ -15,11 +16,17 @@ export default defineConfig(async () => ({
 		tailwindcss(),
 		AutoImport({
 			imports: ['vue', 'vue-router'],
+			dirs: ['./src/composables'],
 			resolvers: [ElementPlusResolver()],
 		}),
 		Components(),
 	],
 
+	resolve: {
+		alias: {
+			'@': './src',
+		},
+	},
 	// Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
 	//
 	// 1. prevent vite from obscuring rust errors
@@ -41,4 +48,4 @@ export default defineConfig(async () => ({
 			ignored: ['**/src-tauri/**'],
 		},
 	},
-}));
+}))
