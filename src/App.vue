@@ -1,5 +1,5 @@
 <template>
-	<div class="bg-zinc-900 h-screen w-screen overflow-y-auto text-white">
+	<div class="bg-zinc-900 h-screen w-screen text-white overflow-hidden">
 		<Titlebar />
 		<RouterView />
 	</div>

@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory } from 'vue-router';
+import { createRouter, createWebHistory } from 'vue-router'
 
 const routes: Array<any> = [
 	{
@@ -10,11 +10,15 @@ const routes: Array<any> = [
 				path: '',
 				component: () => import('./pages/Home.vue'),
 			},
+			{
+				path: 'cms',
+				component: () => import('./pages/Cms.vue'),
+			},
 		],
 	},
-];
+]
 
 export const router = createRouter({
 	history: createWebHistory(),
 	routes,
-});
+})
