@@ -4,3 +4,13 @@
 		<RouterView />
 	</div>
 </template>
+
+<script setup lang="ts">
+import { onMounted } from 'vue'
+import { useAppSettingsStore } from './store/AppSettings'
+
+const { init } = useAppSettingsStore()
+onMounted(async () => {
+	await init()
+})
+</script>

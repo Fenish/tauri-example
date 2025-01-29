@@ -1,10 +1,11 @@
-import AutoImport from 'unplugin-auto-import/vite';
-import { ElementPlusResolver } from 'unplugin-vue-components/resolvers';
-import Components from 'unplugin-vue-components/vite';
-import { defineConfig } from 'vite';
+import AutoImport from 'unplugin-auto-import/vite'
+import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
+import Components from 'unplugin-vue-components/vite'
+import { defineConfig } from 'vite'
 
-import tailwindcss from '@tailwindcss/vite';
-import vue from '@vitejs/plugin-vue';
+import vueDevTools from 'vite-plugin-vue-devtools'
+import tailwindcss from '@tailwindcss/vite'
+import vue from '@vitejs/plugin-vue'
 
 // @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST
@@ -14,6 +15,7 @@ export default defineConfig(async () => ({
 	plugins: [
 		vue(),
 		tailwindcss(),
+		vueDevTools(),
 		AutoImport({
 			imports: ['vue', 'vue-router'],
 			dirs: ['./src/composables'],
@@ -25,6 +27,7 @@ export default defineConfig(async () => ({
 	resolve: {
 		alias: {
 			'@': './src',
+			'~': './',
 		},
 	},
 	// Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
@@ -41,7 +44,7 @@ export default defineConfig(async () => ({
 					protocol: 'ws',
 					host,
 					port: 1421,
-			  }
+				}
 			: undefined,
 		watch: {
 			// 3. tell vite to ignore watching `src-tauri`

@@ -17,7 +17,7 @@ extern "C" {
 
     fn cmsCloseProfile(profile: *mut std::ffi::c_void);
     fn cmsDeleteTransform(transform: *mut std::ffi::c_void);
-    fn cmsCreate_sRGBProfile() -> *mut std::ffi::c_void;  // Create default sRGB profile
+    fn cmsCreate_sRGBProfile() -> *mut std::ffi::c_void; // Create default sRGB profile
 }
 
 // Color conversion functions
@@ -30,7 +30,7 @@ pub fn rgb_to_lab(r: u8, g: u8, b: u8) -> (f32, f32, f32) {
     unsafe {
         // Use default sRGB profile instead of loading an ICC file
         let input_profile = cmsCreate_sRGBProfile();
-        let output_profile = cmsCreate_sRGBProfile();  // You can simulate LAB profile like this
+        let output_profile = cmsCreate_sRGBProfile(); // You can simulate LAB profile like this
 
         let transform = cmsCreateTransform(
             input_profile,
@@ -51,7 +51,7 @@ pub fn rgb_to_lab(r: u8, g: u8, b: u8) -> (f32, f32, f32) {
         cmsCloseProfile(output_profile);
         cmsDeleteTransform(transform);
 
-        (output[0], output[1], output[2])  // Return the LAB values
+        (output[0], output[1], output[2]) // Return the LAB values
     }
 }
 
@@ -66,5 +66,10 @@ pub fn rgb_to_cmyk(r: u8, g: u8, b: u8) -> (u8, u8, u8, u8) {
     let m = (1.0 - g - k) / (1.0 - k).max(1.0);
     let y = (1.0 - b - k) / (1.0 - k).max(1.0);
 
-    ((c * 255.0) as u8, (m * 255.0) as u8, (y * 255.0) as u8, (k * 255.0) as u8)
+    (
+        (c * 255.0) as u8,
+        (m * 255.0) as u8,
+        (y * 255.0) as u8,
+        (k * 255.0) as u8,
+    )
 }

@@ -1,0 +1,8 @@
+{
+	"gpu": {
+		"enabled": true,
+		"device": 0
+	},
+
+	"lowResCopy": true
+}

@@ -1,19 +1,15 @@
 <template>
 	<div class="wrapper">
 		<span>Settings Page</span>
-		<span>Config Dir: {{ configRef }}</span>
+		<span>Config Dir: {{ settingsDir }}</span>
+		{{ userSettings }}
 	</div>
 </template>
 
 <script setup lang="ts">
-import { appConfigDir } from '@tauri-apps/api/path'
-import { ref, onMounted } from 'vue'
+import { useAppSettingsStore } from '../store/AppSettings'
 
-const configRef = ref<any>(null)
-
-onMounted(async () => {
-	configRef.value = await appConfigDir()
-})
+const { userSettings, settingsDir } = useAppSettingsStore()
 </script>
 
 <style scoped>

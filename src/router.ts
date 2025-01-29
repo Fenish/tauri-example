@@ -11,8 +11,8 @@ const routes: Array<any> = [
 				component: () => import('./pages/Home.vue'),
 			},
 			{
-				path: 'cms',
-				component: () => import('./pages/Cms.vue'),
+				path: 'settings',
+				component: () => import('./pages/Settings.vue'),
 			},
 		],
 	},

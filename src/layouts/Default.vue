@@ -7,7 +7,7 @@ const currentRoute = computed(() => router.currentRoute.value)
 
 const buttons = {
 	Home: '/',
-	Cms: '/cms',
+	Settings: '/Settings',
 }
 
 const isActiveRoute = (route: string) => {
@@ -21,9 +21,9 @@ const isActiveRoute = (route: string) => {
 			<button
 				v-for="(value, key) in buttons"
 				:key="key"
-				@click="router.push(value)"
 				class="menu-btn"
 				:class="{ 'active-menu-btn': isActiveRoute(value) }"
+				@click="router.push(value)"
 			>
 				{{ key }}
 			</button>
