@@ -63,7 +63,6 @@ export const useAppSettingsStore = defineStore('AppSettings', () => {
 		if (!(await exists(settingsDir.value))) {
 			await mkdir('', { baseDir: BaseDirectory.AppConfig })
 		}
-
 		await checkSettingsFiles()
 	}
 
