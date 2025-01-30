@@ -1,7 +1,6 @@
 use image::imageops::FilterType;
 use image::GenericImageView;
 use std::fs::metadata;
-use std::io::Cursor;
 use std::path::Path;
 use uuid::Uuid;
 use serde::Serialize;
@@ -14,7 +13,7 @@ pub struct ImageDetails {
     pub name: String,
     pub size: String,     // File size in human-readable format (KB/MB)
     pub dimensions: String, // Image dimensions (e.g., "800x600")
-    pub buffer: Vec<u8>,    // Image data as a Vec<u8> (PNG)
+    pub buffer: Vec<u16>,    // Image data as a Vec<u16> (16-bit)
 }
 
 #[tauri::command]
@@ -62,11 +61,8 @@ pub async fn load_and_resize_images() -> Result<Vec<ImageDetails>, String> {
             return Err(format!("Failed to save low-res image: {}", e));
         }
 
-        // Convert the image to a PNG blob (Vec<u8>)
-        let mut buffer = Cursor::new(Vec::new());
-        if let Err(e) = low_res_image.write_to(&mut buffer, image::ImageFormat::Png) {
-            return Err(format!("Failed to convert image to PNG: {}", e));
-        }
+        // Convert the image to 16-bit buffer
+        let pixels: Vec<u16> = low_res_image.to_rgb16().into_raw();
 
         // Get the file size in human-readable format (KB/MB)
         let file_size = match metadata(&selected_file) {
@@ -92,7 +88,7 @@ pub async fn load_and_resize_images() -> Result<Vec<ImageDetails>, String> {
             name: selected_file,
             size: file_size,
             dimensions,
-            buffer: buffer.into_inner(),
+            buffer: pixels,
         });
     }
 
