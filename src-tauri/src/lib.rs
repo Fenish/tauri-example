@@ -1,15 +1,10 @@
+pub mod global;
 pub mod cpp;
 pub mod rs;
 pub mod utils;
 
-use std::sync::Mutex;
-use std::path::PathBuf;
-use lazy_static::lazy_static;
 use tauri::Manager;
 
-lazy_static! {
-    static ref CACHE_DIR: Mutex<Option<PathBuf>> = Mutex::new(None); // Global cache dir path
-}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -27,6 +22,8 @@ pub fn run() {
 			if let Err(e) = utils::create_dir_if_not_exists(&image_cache_dir) {
 				eprintln!("Failed to create directory: {}", e);
 			}
+
+			*global::IMAGE_CACHE_DIR.lock().unwrap() = image_cache_dir;
 
             Ok(())
         })

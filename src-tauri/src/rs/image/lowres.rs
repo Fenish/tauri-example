@@ -1,60 +1,101 @@
+use image::imageops::FilterType;
 use image::GenericImageView;
-use native_dialog::FileDialog;
+use std::fs::metadata;
+use std::io::Cursor;
 use std::path::Path;
-use tauri::{self};
-use tauri::Manager;
+use uuid::Uuid;
+use serde::Serialize;
 
+use crate::global::IMAGE_CACHE_DIR;
+use crate::rs::image::utils;
 
-#[tauri::command]
-pub async fn load_and_resize_images(app: tauri::AppHandle) -> Result<Vec<String>, String> {
-	let _app_config_dir = app.path().app_config_dir().unwrap();
-
-    // Open the file dialog to select an image file
-    let selected_file = open_image_dialog().await;
-
-    // Handle if no file was selected
-    let selected_file = match selected_file {
-        Some(file) => file,
-        None => return Err("No file selected".to_string()),
-    };
-
-    // Load the image using the image crate
-    let img = match image::open(&selected_file) {
-        Ok(img) => img,
-        Err(e) => return Err(format!("Failed to load image: {}", e)),
-    };
-
-    // Resize the image to a low resolution (e.g., 10% of original size)
-    let scale_factor = 0.1;
-    let (width, height) = img.dimensions();
-    let new_width = (width as f64 * scale_factor) as u32;
-    let new_height = (height as f64 * scale_factor) as u32;
-
-    let low_res_image = img.resize(new_width, new_height, image::imageops::FilterType::Lanczos3);
-
-    // Get the file name from the path
-    let path = Path::new(&selected_file);
-    let file_name = match path.file_name() {
-        Some(name) => name.to_str().unwrap_or("unknown").to_string(),
-        None => "unknown".to_string(),
-    };
-
-    // Save the low-resolution image
-    let output_path = format!("low_res_{}", file_name);
-    match low_res_image.save(&output_path) {
-        Ok(_) => Ok(vec![output_path]),
-        Err(e) => Err(format!("Failed to save low-res image: {}", e)),
-    }
+#[derive(Serialize)]
+pub struct ImageDetails {
+    pub name: String,
+    pub size: String,     // File size in human-readable format (KB/MB)
+    pub dimensions: String, // Image dimensions (e.g., "800x600")
+    pub buffer: Vec<u8>,    // Image data as a Vec<u8> (PNG)
 }
 
-async fn open_image_dialog() -> Option<String> {
-    // Open the file dialog using native_dialog to select a file
-    match FileDialog::new()
-        .add_filter("Image Files", &["png", "jpg", "jpeg", "bmp", "gif"])
-        .show_open_single_file()
-    {
-        Ok(Some(file_path)) => Some(file_path.display().to_string()), // File selected
-        Ok(None) => None, // No file selected
-        Err(_) => None,   // Error occurred
+#[tauri::command]
+pub async fn load_and_resize_images() -> Result<Vec<ImageDetails>, String> {
+    let image_cache_dir = IMAGE_CACHE_DIR.lock().unwrap().clone();
+
+    // Open the file dialog to select multiple image files
+    let selected_files = utils::open_image_dialog().await;
+
+    if selected_files.is_empty() {
+        return Ok(vec![]);
     }
+
+    let mut image_details_list = Vec::new();
+
+    for selected_file in selected_files {
+        // Load the image using the image crate
+        let img = match image::open(&selected_file) {
+            Ok(img) => img,
+            Err(e) => return Err(format!("Failed to load image: {}", e)),
+        };
+
+        // Resize the image to a low resolution (e.g., 50% of original size)
+        let scale_factor = 0.5;
+        let (width, height) = img.dimensions();
+        let new_width = (width as f64 * scale_factor) as u32;
+        let new_height = (height as f64 * scale_factor) as u32;
+
+        let low_res_image = img.resize(new_width, new_height, FilterType::Lanczos3);
+
+        // Extract original file extension (default to "png" if unknown)
+        let original_extension = Path::new(&selected_file)
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .unwrap_or("png");
+
+        // Generate a random file name using UUID and keep the original extension
+        let random_file_name = format!("low_res_{}.{}", Uuid::new_v4(), original_extension);
+
+        // Create full output path inside image_cache_dir
+        let output_path = image_cache_dir.join(&random_file_name);
+
+        // Save the low-resolution image
+        if let Err(e) = low_res_image.save(&output_path) {
+            return Err(format!("Failed to save low-res image: {}", e));
+        }
+
+        // Convert the image to a PNG blob (Vec<u8>)
+        let mut buffer = Cursor::new(Vec::new());
+        if let Err(e) = low_res_image.write_to(&mut buffer, image::ImageFormat::Png) {
+            return Err(format!("Failed to convert image to PNG: {}", e));
+        }
+
+        // Get the file size in human-readable format (KB/MB)
+        let file_size = match metadata(&selected_file) {
+            Ok(meta) => {
+                let size_in_bytes = meta.len();
+                let size_in_kb = size_in_bytes as f64 / 1024.0;
+                let size_in_mb = size_in_kb / 1024.0;
+
+                if size_in_mb >= 1.0 {
+                    format!("{:.2} MB", size_in_mb)
+                } else {
+                    format!("{:.2} KB", size_in_kb)
+                }
+            }
+            Err(_) => "Unknown size".to_string(),
+        };
+
+        // Get the image dimensions as a string (e.g., "800x600")
+        let dimensions = format!("{}x{}", new_width, new_height);
+
+        // Store the details of the resized image
+        image_details_list.push(ImageDetails {
+            name: selected_file,
+            size: file_size,
+            dimensions,
+            buffer: buffer.into_inner(),
+        });
+    }
+
+    // Return the list of image details
+    Ok(image_details_list)
 }
