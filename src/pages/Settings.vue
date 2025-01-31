@@ -9,11 +9,7 @@
 			<div class="w-full border h-full p-3">
 				<div v-for="image in images" :key="image">
 					<span>{{ image }}</span>
-					<img
-						:src="`asset://` + image.lowres_path"
-						class="w-32 h-32"
-						@click="fetchImage(`asset://` + image.lowres_path)"
-					/>
+					<img :src="convertFileSrc(image.lowres_path)" class="w-32 h-32" />
 				</div>
 			</div>
 		</div>
@@ -22,7 +18,7 @@
 
 <script setup lang="ts">
 import { useAppSettingsStore } from '../store/AppSettings'
-import { invoke } from '@tauri-apps/api/core'
+import { invoke, convertFileSrc } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { ref } from 'vue'
 
@@ -30,16 +26,6 @@ const { settingsDir } = useAppSettingsStore()
 
 const imageProgress = ref<any>(0)
 const images = ref<any>([])
-
-async function fetchImage(url: string) {
-	try {
-		const response = await fetch(url)
-		console.log(response)
-	} catch (e) {
-		console.log(e)
-	}
-}
-
 async function test() {
 	const response: Array<any> = await invoke('load_and_resize_images')
 	images.value.push(...response)
