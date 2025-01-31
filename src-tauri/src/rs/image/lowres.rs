@@ -4,8 +4,11 @@ use serde::Serialize;
 use std::fs::{metadata, copy};
 use std::path::Path;
 use tauri::AppHandle;
-use uuid::Uuid;
 use tauri::Emitter;
+use exif::{Reader, Tag};
+use std::fs::File;
+use sha2::{Sha256, Digest};
+use std::io::Read;
 
 use crate::global::IMAGE_CACHE_DIR;
 use crate::rs::utils::file_utils;
@@ -31,6 +34,42 @@ pub struct ImageDetails {
     pub dimensions: ImageDimensions,
     pub lowres_path: String,
     pub hires_path: String,
+    pub dpi: Option<(f32, f32)>,
+}
+
+fn get_resolutions(image_path: &str) -> Option<(f32, f32)> {
+    // Open the image file
+    let file = File::open(image_path).ok()?;
+    
+    // Create an EXIF reader
+    let reader = Reader::new();
+    let buf = reader.read_from_container(&mut std::io::BufReader::new(file)).ok()?;
+
+    let mut x_resolution = None;
+    let mut y_resolution = None;
+
+    // Look for XResolution and YResolution in the EXIF data
+    for f in buf.fields() {
+        match f.tag {
+            Tag::XResolution => {
+                if let exif::Value::Rational(r) = &f.value {
+                    x_resolution = Some(r[0].to_f32());
+                }
+            },
+            Tag::YResolution => {
+                if let exif::Value::Rational(r) = &f.value {
+                    y_resolution = Some(r[0].to_f32());
+                }
+            },
+            _ => {}
+        }
+    }
+
+    // If both resolutions are found, return them as a tuple
+    match (x_resolution, y_resolution) {
+        (Some(x), Some(y)) => Some((x, y)),
+        _ => None,
+    }
 }
 
 fn get_human_readable_size(size_in_bytes: u64) -> String {
@@ -67,6 +106,15 @@ fn calculate_new_dimensions(width: u32, height: u32) -> Option<(u32, u32)> {
     let new_height = (height as f64 * scale).round() as u32;
 
     Some((new_width, new_height))
+}
+
+fn calculate_file_hash(file_path: &str) -> String {
+    let mut hasher = Sha256::new();
+    let mut file = File::open(file_path).expect("Unable to open file");
+    let mut buffer = Vec::new();
+    file.read_to_end(&mut buffer).expect("Unable to read file");
+    hasher.update(&buffer);
+    format!("{:x}", hasher.finalize())
 }
 
 #[tauri::command]
@@ -106,21 +154,18 @@ pub async fn load_and_resize_images(app_handle: AppHandle) -> Result<Vec<ImageDe
         let (width, height) = img.dimensions();
         let hires_dimensions = format!("{}x{}", width, height);
 
-        let file_id = Uuid::new_v4();
-        let original_extension = Path::new(&selected_file)
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .unwrap_or("png");
+        let file_hash = calculate_file_hash(selected_file);
+        let new_filename = format!("{}-{}.jpg", Path::new(&selected_file).file_stem().unwrap().to_string_lossy(), file_hash);
+        let hires_path = hires_dir.join(&new_filename);
 
-        let hires_filename = format!("high_res_{}.{}", file_id, original_extension);
-        let hires_path = hires_dir.join(&hires_filename);
-
-        // Step 3: Copying original image (hires)
-        app_handle.emit("image-loading-progress", 
-            calculate_progress(index, total_images, 3, TOTAL_STEPS)).unwrap();
-            
-        if let Err(e) = copy(&selected_file, &hires_path) {
-            return Err(format!("Failed to copy original image: {}", e));
+        if !hires_path.exists() {
+            // Step 3: Copying original image (hires)
+            app_handle.emit("image-loading-progress", 
+                calculate_progress(index, total_images, 3, TOTAL_STEPS)).unwrap();
+                
+            if let Err(e) = copy(&selected_file, &hires_path) {
+                return Err(format!("Failed to copy original image: {}", e));
+            }
         }
 
         // Calculate new dimensions if needed
@@ -131,16 +176,20 @@ pub async fn load_and_resize_images(app_handle: AppHandle) -> Result<Vec<ImageDe
             calculate_progress(index, total_images, 4, TOTAL_STEPS)).unwrap();
 
         let (lowres_path, lowres_dimensions) = if needs_resize {
-            let (new_width, new_height) = calculate_new_dimensions(width, height).unwrap();
-            let lowres_filename = format!("low_res_{}.{}", file_id, original_extension);
-            let lowres_path = lowres_dir.join(&lowres_filename);
-            
-            let low_res_image = img.resize(new_width, new_height, FilterType::Lanczos3);
-            if let Err(e) = low_res_image.save(&lowres_path) {
-                return Err(format!("Failed to save low-res image: {}", e));
+            if hires_path.exists() {
+                (hires_path.clone(), hires_dimensions.clone())
+            } else {
+                let (new_width, new_height) = calculate_new_dimensions(width, height).unwrap();
+                let lowres_filename = format!("{}-{}-lowres.jpg", Path::new(&selected_file).file_stem().unwrap().to_string_lossy(), file_hash);
+                let lowres_path = lowres_dir.join(&lowres_filename);
+                
+                let low_res_image = img.resize(new_width, new_height, FilterType::Lanczos3);
+                if let Err(e) = low_res_image.save(&lowres_path) {
+                    return Err(format!("Failed to save low-res image: {}", e));
+                }
+                
+                (lowres_path, format!("{}x{}", new_width, new_height))
             }
-            
-            (lowres_path, format!("{}x{}", new_width, new_height))
         } else {
             // If no resize needed, use the hires path for both
             (hires_path.clone(), hires_dimensions.clone())
@@ -164,6 +213,8 @@ pub async fn load_and_resize_images(app_handle: AppHandle) -> Result<Vec<ImageDe
             hires_size.clone() // Use same size if no resize
         };
 
+        let dpi_data = get_resolutions(selected_file);
+
         // Step 6: Finalizing
         app_handle.emit("image-loading-progress", 
             calculate_progress(index, total_images, 6, TOTAL_STEPS)).unwrap();
@@ -184,6 +235,7 @@ pub async fn load_and_resize_images(app_handle: AppHandle) -> Result<Vec<ImageDe
             },
             lowres_path: lowres_path.to_string_lossy().into_owned(),
             hires_path: hires_path.to_string_lossy().into_owned(),
+            dpi: dpi_data,
         });
     }
 

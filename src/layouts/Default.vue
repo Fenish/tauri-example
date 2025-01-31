@@ -28,7 +28,7 @@ const isActiveRoute = (route: string) => {
 				{{ key }}
 			</button>
 		</div>
-		<div class="w-full h-full">
+		<div>
 			<RouterView />
 		</div>
 	</div>
@@ -38,7 +38,7 @@ const isActiveRoute = (route: string) => {
 @reference "tailwindcss";
 
 .wrapper {
-	@apply w-full h-full py-10 flex flex-col gap-5 overflow-hidden;
+	@apply w-full h-full py-10 flex flex-col gap-5 overflow-y-scroll;
 }
 
 .menu {
