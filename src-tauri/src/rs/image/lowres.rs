@@ -6,7 +6,7 @@ use uuid::Uuid;
 use serde::Serialize;
 
 use crate::global::IMAGE_CACHE_DIR;
-use crate::rs::image::utils;
+use crate::rs::utils::file_utils;
 
 #[derive(Serialize)]
 pub struct ImageDetails {
@@ -21,7 +21,7 @@ pub async fn load_and_resize_images() -> Result<Vec<ImageDetails>, String> {
     let image_cache_dir = IMAGE_CACHE_DIR.lock().unwrap().clone();
 
     // Open the file dialog to select multiple image files
-    let selected_files = utils::open_image_dialog().await;
+    let selected_files = file_utils::open_image_dialog().await;
 
     if selected_files.is_empty() {
         return Ok(vec![]);

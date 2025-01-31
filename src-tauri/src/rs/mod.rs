@@ -1,2 +1,2 @@
-pub mod cms;
 pub mod image;
+pub mod utils;	

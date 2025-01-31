@@ -1,4 +1,3 @@
-
 use native_dialog::FileDialog;
 
 pub async fn open_image_dialog() -> Vec<String> {
