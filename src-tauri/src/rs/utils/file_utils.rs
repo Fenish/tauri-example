@@ -1,15 +1,13 @@
-use native_dialog::FileDialog;
+use tauri_plugin_dialog::DialogExt;
+use tauri::AppHandle;
+use tauri_plugin_dialog::FilePath;
 
-pub async fn open_image_dialog() -> Vec<String> {
-    // Open the file dialog for selecting multiple files
-    match FileDialog::new()
-        .add_filter("Image Files", &["png", "jpg", "jpeg", "bmp", "gif"])
-        .show_open_multiple_file()
-    {
-        Ok(files) => files
-            .into_iter()
-            .map(|file| file.display().to_string())
-            .collect(), // Convert paths to String
-        Err(_) => vec![], // Return an empty Vec if an error occurs
-    }
+pub fn open_image_dialog(app_handle: AppHandle) -> Vec<String> {
+    let file_path: Option<FilePath> = app_handle
+        .dialog()
+        .file()
+        .add_filter("Image Files", &["png", "jpeg", "jpg", "gif", "webp", "bmp", "tiff", "svg"])
+        .blocking_pick_file();
+
+    file_path.map(|path| vec![path.to_string()]).unwrap_or_default()
 }

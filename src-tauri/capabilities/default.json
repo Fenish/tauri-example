@@ -1,27 +1,29 @@
 {
-	"$schema": "../gen/schemas/desktop-schema.json",
-	"identifier": "default",
-	"description": "Capability for the main window",
-	"windows": ["main"],
-	"permissions": [
-		"core:default",
-		"opener:default",
-		"core:window:default",
-		"core:window:allow-start-dragging",
-		"core:window:allow-close",
-		"core:window:allow-toggle-maximize",
-		"core:window:allow-minimize",
-		"fs:allow-app-write", 
-		"fs:allow-app-write-recursive", 
-		"fs:allow-appcache-write", 
-		"fs:allow-appcache-write-recursive", 
-		"fs:allow-appconfig-write",
-		"fs:allow-app-meta",
-		"fs:allow-app-meta-recursive",
-		"fs:allow-app-read",
-		"fs:allow-app-read-recursive",
-		"fs:allow-appcache-meta",
-		"fs:allow-appcache-meta-recursive"
-
-	]
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capability for the main window",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "opener:default",
+    "core:window:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-close",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-minimize",
+    "fs:allow-app-write",
+    "fs:allow-app-write-recursive",
+    "fs:allow-appcache-write",
+    "fs:allow-appcache-write-recursive",
+    "fs:allow-appconfig-write",
+    "fs:allow-app-meta",
+    "fs:allow-app-meta-recursive",
+    "fs:allow-app-read",
+    "fs:allow-app-read-recursive",
+    "fs:allow-appcache-meta",
+    "fs:allow-appcache-meta-recursive",
+    "dialog:default"
+  ]
 }

@@ -11,4 +11,3 @@ pub fn create_dir_if_not_exists(path: &Path) -> Result<(), std::io::Error> {
     }
     Ok(())
 }
-
