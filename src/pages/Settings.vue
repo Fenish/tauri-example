@@ -39,32 +39,32 @@ listen('image-loading-progress', (event) => {
 	}
 })
 
-type DownloadEvent =
-	| {
-			event: 'started'
-			data: {
-				hash: string
-				content_length: Array<number>
-			}
-	  }
-	| {
-			event: 'progress'
-			data: {
-				hash: string
-				chunk: Array<number>
-			}
-	  }
-	| {
-			event: 'finished'
-			data: {
-				hash: string
-			}
-	  }
+// type DownloadEvent =
+// 	| {
+// 			event: 'started'
+// 			data: {
+// 				hash: string
+// 				content_length: Array<number>
+// 			}
+// 	  }
+// 	| {
+// 			event: 'progress'
+// 			data: {
+// 				hash: string
+// 				chunk: Array<number>
+// 			}
+// 	  }
+// 	| {
+// 			event: 'finished'
+// 			data: {
+// 				hash: string
+// 			}
+// 	  }
 
 const channel = new Channel()
 async function test() {
 	const start = performance.now()
-	const response = await invoke('load_and_resize_images', {
+	await invoke('load_and_resize_images', {
 		channel: channel,
 	})
 	let diff: any = performance.now() - start
