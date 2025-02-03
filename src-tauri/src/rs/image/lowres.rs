@@ -1,244 +1,234 @@
-use image::imageops::FilterType;
+use tauri::{ipc::Channel, AppHandle};
+
+use tokio::{fs::File, io::AsyncReadExt, io::AsyncSeekExt};
 use image::GenericImageView;
-use serde::Serialize;
-use std::fs::{metadata, copy};
-use std::path::Path;
-use tauri::AppHandle;
-use tauri::Emitter;
-use exif::{Reader, Tag};
-use std::fs::File;
+
+use std::io::{BufWriter, SeekFrom};
 use sha2::{Sha256, Digest};
-use std::io::Read;
+
+use image::codecs::png::PngEncoder;
+use image::{ImageEncoder, ImageReader};
+
+use fast_image_resize::{IntoImageView, Resizer};
+use fast_image_resize::images::Image;
+use fast_image_resize as fr;
 
 use crate::global::IMAGE_CACHE_DIR;
 use crate::rs::utils::file_utils;
 
-const TARGET_SIZE: u32 = 1024;
+use serde::{Serialize, Deserialize};
+use std::fs::metadata;
 
-#[derive(Serialize)]
-pub struct ImageSizes {
-    pub lowres: String,
-    pub hires: String,
-}
 
-#[derive(Serialize)]
-pub struct ImageDimensions {
-    pub lowres: String,
-    pub hires: String,
-}
-
-#[derive(Serialize)]
-pub struct ImageDetails {
-    pub name: String,
-    pub size: ImageSizes,
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ImageInfo {
+    pub image_name: String,
+    pub size: ImageSize,
     pub dimensions: ImageDimensions,
-    pub lowres_path: String,
-    pub hires_path: String,
-    pub dpi: Option<(f32, f32)>,
+    pub paths: ImagePaths,
 }
 
-fn get_resolutions(image_path: &str) -> Option<(f32, f32)> {
-    // Open the image file
-    let file = File::open(image_path).ok()?;
-    
-    // Create an EXIF reader
-    let reader = Reader::new();
-    let buf = reader.read_from_container(&mut std::io::BufReader::new(file)).ok()?;
-
-    let mut x_resolution = None;
-    let mut y_resolution = None;
-
-    // Look for XResolution and YResolution in the EXIF data
-    for f in buf.fields() {
-        match f.tag {
-            Tag::XResolution => {
-                if let exif::Value::Rational(r) = &f.value {
-                    x_resolution = Some(r[0].to_f32());
-                }
-            },
-            Tag::YResolution => {
-                if let exif::Value::Rational(r) = &f.value {
-                    y_resolution = Some(r[0].to_f32());
-                }
-            },
-            _ => {}
-        }
-    }
-
-    // If both resolutions are found, return them as a tuple
-    match (x_resolution, y_resolution) {
-        (Some(x), Some(y)) => Some((x, y)),
-        _ => None,
-    }
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ImageSize {
+    pub lowres: String,
+    pub highres: String,
 }
 
-fn get_human_readable_size(size_in_bytes: u64) -> String {
-    let size_in_kb = size_in_bytes as f64 / 1024.0;
-    let size_in_mb = size_in_kb / 1024.0;
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ImageDimensions {
+    pub lowres: XYDimensions,
+    pub highres: XYDimensions,
+}
 
-    if size_in_mb >= 1.0 {
-        format!("{:.2} MB", size_in_mb)
+#[derive(Serialize, Deserialize, Debug)]
+pub struct XYDimensions {
+    pub x: u32,
+    pub y: u32,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ImagePaths {
+    pub lowres: String,
+    pub highres: String,
+}
+
+pub async fn get_image_info(image_name: &str, file_path: &str) -> Result<ImageInfo, String> {
+    // Load high-res image
+    let highres_image = ImageReader::open(file_path)
+        .map_err(|e| format!("Failed to open highres image: {}", e))?
+        .decode()
+        .map_err(|e| format!("Failed to decode highres image: {}", e))?;
+    let (highres_width, highres_height) = highres_image.dimensions();
+
+    // Get high-res file size
+    let highres_size = get_file_size(file_path)?;
+
+    // Calculate low-res path and load low-res image
+    let image_cache_dir = IMAGE_CACHE_DIR.lock().unwrap().clone();
+    let lowres_dir: std::path::PathBuf = image_cache_dir.join("lowres");
+    let lowres_path = lowres_dir.join(format!("{}.png", image_name));
+    let lowres_image = ImageReader::open(&lowres_path)
+        .map_err(|e| format!("Failed to open lowres image: {}", e))?
+        .decode()
+        .map_err(|e| format!("Failed to decode lowres image: {}", e))?;
+    let (lowres_width, lowres_height) = lowres_image.dimensions();
+
+    // Get low-res file size
+    let lowres_size = get_file_size(&lowres_path.to_string_lossy())?;
+
+    // Build and return the ImageInfo struct
+    let size = ImageSize {
+        lowres: lowres_size,
+        highres: highres_size,
+    };
+
+    let dimensions = ImageDimensions {
+        lowres: XYDimensions {
+			x: lowres_width,
+			y: lowres_height
+		},
+        highres: XYDimensions {
+			x: highres_width,
+			y: highres_height
+		},
+    };
+
+    let paths = ImagePaths {
+        lowres: lowres_path.to_string_lossy().into(),
+        highres: file_path.to_string(),
+    };
+
+    Ok(ImageInfo {
+        image_name: image_name.to_string(),
+        size,
+        dimensions,
+        paths,
+    })
+}
+
+// Helper function to get file size in appropriate units
+fn get_file_size(file_path: &str) -> Result<String, String> {
+    let metadata = metadata(file_path).map_err(|e| format!("Failed to get file metadata: {}", e))?;
+    let size = metadata.len();
+    let size_in_mb = size as f64 / (1024.0 * 1024.0); // Convert to MB
+    let size_in_kb = size as f64 / 1024.0; // Convert to KB
+
+    if size_in_mb > 1.0 {
+        Ok(format!("{:.2} MB", size_in_mb))
+    } else if size_in_kb > 1.0 {
+        Ok(format!("{:.2} KB", size_in_kb))
     } else {
-        format!("{:.2} KB", size_in_kb)
+        Ok(format!("{} bytes", size))
     }
 }
 
-fn calculate_progress(image_index: usize, total_images: usize, step: u8, total_steps: u8) -> f64 {
-    let image_progress = (step as f64 / total_steps as f64) * 100.0;
-    let base_progress = (image_index as f64 / total_images as f64) * 100.0;
-    let step_size = 100.0 / total_images as f64;
-    
-    base_progress + (step_size * (image_progress / 100.0))
-}
-
-fn calculate_new_dimensions(width: u32, height: u32) -> Option<(u32, u32)> {
-    let longest_edge = width.max(height);
-    
-    // If the longest edge is already smaller than or equal to target size,
-    // no resizing needed
-    if longest_edge <= TARGET_SIZE {
-        return None;
-    }
-
-    // Calculate the scaling factor to maintain aspect ratio
-    let scale = TARGET_SIZE as f64 / longest_edge as f64;
-    let new_width = (width as f64 * scale).round() as u32;
-    let new_height = (height as f64 * scale).round() as u32;
-
-    Some((new_width, new_height))
-}
-
-fn calculate_file_hash(file_path: &str) -> String {
-    let mut hasher = Sha256::new();
-    let mut file = File::open(file_path).expect("Unable to open file");
-    let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer).expect("Unable to read file");
-    hasher.update(&buffer);
-    format!("{:x}", hasher.finalize())
-}
 
 #[tauri::command]
-pub async fn load_and_resize_images(app_handle: AppHandle) -> Result<Vec<ImageDetails>, String> {
+pub async fn load_and_resize_images(app_handle: AppHandle, channel: Channel) -> Result<Vec<ImageInfo>, String> {
     let image_cache_dir = IMAGE_CACHE_DIR.lock().unwrap().clone();
-    let lowres_dir = image_cache_dir.join("lowres");
-    let hires_dir = image_cache_dir.join("hires");
+    let lowres_dir: std::path::PathBuf = image_cache_dir.join("lowres");
+    let highres_dir: std::path::PathBuf = image_cache_dir.join("highres");
 
-    // Open the file dialog to select multiple image files
     let selected_files = file_utils::open_image_dialog(app_handle.clone());
+    
+    let mut image_info_list: Vec<ImageInfo> = Vec::new();
 
-    if selected_files.is_empty() {
-        return Ok(vec![]);
-    }
+    for file_path in selected_files {
+        // Get image info for the file
+        let file_name = get_hash(&file_path).await;
+        let lowres_path = lowres_dir.join(format!("{}.png", file_name));
 
-    let mut image_details_list = Vec::new();
-    let total_images = selected_files.len();
-    const TOTAL_STEPS: u8 = 6; // Total number of steps per image
-
-    // Initial progress
-    app_handle.emit("image-loading-progress", 0.0).unwrap();
-
-    for (index, selected_file) in selected_files.iter().enumerate() {
-        // Step 1: Loading image
-        app_handle.emit("image-loading-progress", 
-            calculate_progress(index, total_images, 1, TOTAL_STEPS)).unwrap();
-            
-        let img = match image::open(&selected_file) {
-            Ok(img) => img,
-            Err(e) => return Err(format!("Failed to load image: {}", e)),
-        };
-
-        // Step 2: Processing dimensions
-        app_handle.emit("image-loading-progress", 
-            calculate_progress(index, total_images, 2, TOTAL_STEPS)).unwrap();
-            
-        let (width, height) = img.dimensions();
-        let hires_dimensions = format!("{}x{}", width, height);
-
-        let file_hash = calculate_file_hash(selected_file);
-        let new_filename = format!("{}-{}.jpg", Path::new(&selected_file).file_stem().unwrap().to_string_lossy(), file_hash);
-        let hires_path = hires_dir.join(&new_filename);
-
-        if !hires_path.exists() {
-            // Step 3: Copying original image (hires)
-            app_handle.emit("image-loading-progress", 
-                calculate_progress(index, total_images, 3, TOTAL_STEPS)).unwrap();
-                
-            if let Err(e) = copy(&selected_file, &hires_path) {
-                return Err(format!("Failed to copy original image: {}", e));
-            }
+        let is_exists: bool = file_utils::check_file_exists(&lowres_path).await;
+        // If lowres image does not exist, generate it
+        if !is_exists {
+            let lowres_image_buffer = get_lowres_image(&file_path.clone()).unwrap();
+            file_utils::save_file(lowres_image_buffer, &lowres_path).await.unwrap();
         }
 
-        // Calculate new dimensions if needed
-        let needs_resize = calculate_new_dimensions(width, height).is_some();
-        
-        // Step 4: Process lowres version if needed
-        app_handle.emit("image-loading-progress", 
-            calculate_progress(index, total_images, 4, TOTAL_STEPS)).unwrap();
+        // Get image info for both high-res and low-res images
+        let lowres_image_info = get_image_info(&file_name, &lowres_path.to_string_lossy()).await?;
+        let highres_image_info = get_image_info(&file_name, &file_path).await?;
 
-        let (lowres_path, lowres_dimensions) = if needs_resize {
-            if hires_path.exists() {
-                (hires_path.clone(), hires_dimensions.clone())
-            } else {
-                let (new_width, new_height) = calculate_new_dimensions(width, height).unwrap();
-                let lowres_filename = format!("{}-{}-lowres.jpg", Path::new(&selected_file).file_stem().unwrap().to_string_lossy(), file_hash);
-                let lowres_path = lowres_dir.join(&lowres_filename);
-                
-                let low_res_image = img.resize(new_width, new_height, FilterType::Lanczos3);
-                if let Err(e) = low_res_image.save(&lowres_path) {
-                    return Err(format!("Failed to save low-res image: {}", e));
-                }
-                
-                (lowres_path, format!("{}x{}", new_width, new_height))
-            }
-        } else {
-            // If no resize needed, use the hires path for both
-            (hires_path.clone(), hires_dimensions.clone())
-        };
-
-        // Step 5: Processing metadata
-        app_handle.emit("image-loading-progress", 
-            calculate_progress(index, total_images, 5, TOTAL_STEPS)).unwrap();
-            
-        let hires_size = match metadata(&hires_path) {
-            Ok(meta) => get_human_readable_size(meta.len()),
-            Err(_) => "Unknown size".to_string(),
-        };
-
-        let lowres_size = if needs_resize {
-            match metadata(&lowres_path) {
-                Ok(meta) => get_human_readable_size(meta.len()),
-                Err(_) => "Unknown size".to_string(),
-            }
-        } else {
-            hires_size.clone() // Use same size if no resize
-        };
-
-        let dpi_data = get_resolutions(selected_file);
-
-        // Step 6: Finalizing
-        app_handle.emit("image-loading-progress", 
-            calculate_progress(index, total_images, 6, TOTAL_STEPS)).unwrap();
-
-        image_details_list.push(ImageDetails {
-            name: Path::new(&selected_file)
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("Unknown")
-                .to_string(),
-            size: ImageSizes {
-                lowres: lowres_size,
-                hires: hires_size,
+		let real_highres_path = highres_dir.join(format!("{}.tiff", file_name));
+        // Add image info to the list
+        image_info_list.push(ImageInfo {
+            image_name: lowres_image_info.image_name,  // We can just use the lowres image name for both
+            size: ImageSize {
+                lowres: lowres_image_info.size.lowres,
+                highres: highres_image_info.size.highres,
             },
             dimensions: ImageDimensions {
-                lowres: lowres_dimensions,
-                hires: hires_dimensions,
+                lowres: lowres_image_info.dimensions.lowres,
+                highres: highres_image_info.dimensions.highres,
             },
-            lowres_path: lowres_path.to_string_lossy().into_owned(),
-            hires_path: hires_path.to_string_lossy().into_owned(),
-            dpi: dpi_data,
+            paths: ImagePaths {
+                lowres: lowres_image_info.paths.lowres,
+                highres: real_highres_path.to_string_lossy().into(),
+            },
         });
     }
 
-    // Return the list of image details
-    Ok(image_details_list)
+    Ok(image_info_list)
+}
+
+fn get_lowres_image(path: &str) -> Result<Vec<u8>, String> {
+	let src_image = ImageReader::open(path)
+        .map_err(|e| format!("Failed to open image: {}", e))?
+        .decode()
+        .map_err(|e| format!("Failed to decode image: {}", e))?;
+
+    // Get the source image's dimensions
+    let (src_width, src_height) = src_image.dimensions();
+
+    // Define the max dimension (1024px)
+    let max_dim = 1024;
+    let (dst_width, dst_height) = if src_width > src_height {
+        let new_width = max_dim;
+        let new_height = (src_height as f32 * (max_dim as f32 / src_width as f32)) as u32;
+        (new_width, new_height)
+    } else {
+        let new_height = max_dim;
+        let new_width = (src_width as f32 * (max_dim as f32 / src_height as f32)) as u32;
+        (new_width, new_height)
+    };
+
+    // Create a new image with the resized dimensions
+    let mut dst_image = Image::new(dst_width, dst_height, src_image.pixel_type().unwrap());
+
+    // Create Resizer instance and resize the source image
+    let mut resizer = Resizer::new();
+    unsafe {
+        resizer.set_cpu_extensions(fr::CpuExtensions::Sse4_1);
+    }
+
+    // Perform the resize operation
+    resizer
+        .resize(&src_image, &mut dst_image, None)
+        .map_err(|e| format!("Failed to resize image: {}", e))?;
+
+    // Create a buffer to hold the resulting PNG image
+    let mut result_buf = BufWriter::new(Vec::new());
+
+    // Encode the resized image as PNG and write it into the buffer
+    PngEncoder::new(&mut result_buf)
+        .write_image(
+            dst_image.buffer(),
+            dst_width,
+            dst_height,
+            src_image.color().into(),
+        )
+        .map_err(|e| format!("Failed to write PNG image: {}", e))?;
+
+	Ok(result_buf.into_inner().map_err(|e| format!("Failed to get result buffer: {}", e))?)
+}
+
+async fn get_hash(file_path: &str) -> String {
+	let mut file: File = File::open(file_path).await.unwrap();
+	let mut buffer = Vec::new();
+	let mut hasher = Sha256::new();
+	file.seek(SeekFrom::Start(0)).await.unwrap();
+	file.read_to_end(&mut buffer).await.unwrap();
+	hasher.update(&buffer);
+
+	format!("{:x}", hasher.finalize())
 }

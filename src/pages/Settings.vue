@@ -6,10 +6,12 @@
 			<div class="w-full rounded-md bg-zinc-700 h-2">
 				<div class="bg-green-500 h-full transition-all duration-300" :style="{ width: imageProgress + '%' }" />
 			</div>
+			<span>Time took</span>
+			<span>{{ timetook }}</span>
 			<div class="w-full border h-full p-3">
 				<div v-for="image in images" :key="image">
 					<span>{{ image }}</span>
-					<img :src="convertFileSrc(image.lowres_path)" class="w-32 h-32" />
+					<img :src="image.base64_data" class="w-32 h-32" />
 				</div>
 			</div>
 		</div>
@@ -18,18 +20,15 @@
 
 <script setup lang="ts">
 import { useAppSettingsStore } from '../store/AppSettings'
-import { invoke, convertFileSrc } from '@tauri-apps/api/core'
+import { invoke, convertFileSrc, Channel } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { ref } from 'vue'
 
 const { settingsDir } = useAppSettingsStore()
 
 const imageProgress = ref<any>(0)
-const images = ref<any>([])
-async function test() {
-	const response: Array<any> = await invoke('load_and_resize_images')
-	images.value.push(...response)
-}
+const images = ref<any>({})
+const timetook = ref<any>('')
 
 listen('image-loading-progress', (event) => {
 	imageProgress.value = event.payload
@@ -39,6 +38,50 @@ listen('image-loading-progress', (event) => {
 		}, 1000)
 	}
 })
+
+type DownloadEvent =
+	| {
+			event: 'started'
+			data: {
+				hash: string
+				content_length: Array<number>
+			}
+	  }
+	| {
+			event: 'progress'
+			data: {
+				hash: string
+				chunk: Array<number>
+			}
+	  }
+	| {
+			event: 'finished'
+			data: {
+				hash: string
+			}
+	  }
+
+const channel = new Channel()
+async function test() {
+	const start = performance.now()
+	const response = await invoke('load_and_resize_images', {
+		channel: channel,
+	})
+	let diff: any = performance.now() - start
+	// make diff minutes, seconds and miliseconds
+	diff =
+		Math.floor(diff / 1000 / 60) +
+		' minutes ' +
+		Math.floor((diff / 1000) % 60) +
+		' seconds and ' +
+		Math.floor(diff % 1000) +
+		' miliseconds'
+	timetook.value = diff
+}
+
+channel.onmessage = (event) => {
+	console.log(event)
+}
 </script>
 
 <style scoped>
