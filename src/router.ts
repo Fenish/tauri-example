@@ -11,8 +11,8 @@ const routes: Array<any> = [
 				component: () => import('./pages/Home.vue'),
 			},
 			{
-				path: 'settings',
-				component: () => import('./pages/Settings.vue'),
+				path: 'comparer',
+				component: () => import('./pages/Comparer.vue'),
 			},
 		],
 	},

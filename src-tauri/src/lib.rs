@@ -1,7 +1,6 @@
-pub mod cpp;
 pub mod global;
-pub mod rs;
-pub mod utils;
+pub mod image;
+pub mod utilities;
 
 use tauri::Manager;
 
@@ -12,24 +11,17 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
-            crate::rs::image::lowres::load_and_resize_images,
+            crate::image::lowres_rs::load_and_resize_images,
         ])
         .setup(|app| {
             // Initialize the cache directory once the app is running
             let app_config_dir = app.path().app_config_dir().unwrap();
             let image_cache_dir = app_config_dir.join("image_cache");
 
-            if let Err(e) = utils::create_dir_if_not_exists(&image_cache_dir) {
-                eprintln!("Failed to create directory: {}", e);
-            }
-
-			if let Err(e) = utils::create_dir_if_not_exists(&image_cache_dir.join("hires")) {
-                eprintln!("Failed to create directory: {}", e);
-            }
-
-			if let Err(e) = utils::create_dir_if_not_exists(&image_cache_dir.join("lowres")) {
-                eprintln!("Failed to create directory: {}", e);
-            }
+            utilities::file_utils::create_dir_if_not_exists(&image_cache_dir);
+            utilities::file_utils::create_dir_if_not_exists(&image_cache_dir.join("highres"));
+            utilities::file_utils::create_dir_if_not_exists(&image_cache_dir.join("lowres"));
+            utilities::file_utils::create_dir_if_not_exists(&image_cache_dir.join("tiles"));
 
             *global::IMAGE_CACHE_DIR.lock().unwrap() = image_cache_dir;
 

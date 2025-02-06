@@ -7,7 +7,7 @@ const currentRoute = computed(() => router.currentRoute.value)
 
 const buttons = {
 	Home: '/',
-	Settings: '/Settings',
+	Comparer: '/Comparer',
 }
 
 const isActiveRoute = (route: string) => {

@@ -26,6 +26,12 @@ importers:
       pinia:
         specifier: ^2.3.1
         version: 2.3.1(typescript@5.6.3)(vue@3.5.13(typescript@5.6.3))
+      tauri-plugin-pytauri-api:
+        specifier: ^0.2.0
+        version: 0.2.0
+      tauri-plugin-python-api:
+        specifier: ^0.3.1
+        version: 0.3.1
       vue:
         specifier: ^3.5.13
         version: 3.5.13(typescript@5.6.3)
@@ -1709,6 +1715,12 @@ packages:
   tapable@2.2.1:
     resolution: {integrity: sha512-GNzQvQTOIP6RyTfE2Qxb8ZVlNmw0n88vp1szwWRimP02mnTsx3Wtn5qRdqY9w2XduFNUgvOwhNnQsjwCp+kqaQ==}
     engines: {node: '>=6'}
+
+  tauri-plugin-pytauri-api@0.2.0:
+    resolution: {integrity: sha512-ty9Rr4+ISu1knYoz9RtuxPPBgMQl4aIrBgoPtIxlDiHnHNVSfVD1wMQhfyntlnSgekGTuoiO4t2E6G8El8BapA==}
+
+  tauri-plugin-python-api@0.3.1:
+    resolution: {integrity: sha512-g3oh1Dxxsf6oWxVpd4KA0iNUSZyVUqPBRjf7o2M00G21R/JQH5txDtx5HvCcLij2+OeLrgi4nIenblRg0ywygQ==}
 
   to-regex-range@5.0.1:
     resolution: {integrity: sha512-65P7iz6X5yEr1cwcgvQxbbIw7Uk3gOy5dIdtZ4rDveLqhrdJP+Li/Hx6tyK0NEb+2GCyneCMJiGqrADCSNk8sQ==}
@@ -3498,6 +3510,14 @@ snapshots:
   tailwindcss@4.0.0: {}
 
   tapable@2.2.1: {}
+
+  tauri-plugin-pytauri-api@0.2.0:
+    dependencies:
+      '@tauri-apps/api': 2.2.0
+
+  tauri-plugin-python-api@0.3.1:
+    dependencies:
+      '@tauri-apps/api': 2.2.0
 
   to-regex-range@5.0.1:
     dependencies:
