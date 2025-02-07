@@ -28,8 +28,6 @@ pub fn create_dir_if_not_exists(path: &Path) {
     if !path.exists() {
         fs::create_dir_all(path).unwrap();
         println!("Directory created at: {:?}", path);
-    } else {
-        println!("Directory already exists at: {:?}", path);
     }
 }
 

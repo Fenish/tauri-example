@@ -19,13 +19,12 @@ use crate::utilities::file_utils;
 use serde::{Serialize, Deserialize};
 use std::fs::{metadata, create_dir_all};
 use std::path::PathBuf;
-use futures::future::join_all;
 use std::fs::File as StdFile;
+use rexiv2::Metadata;
 
 const BUFFER_SIZE: usize = 65536; // 64KB buffer
 const MAX_DIMENSION: u32 = 1024;
 const HASH_BUFFER_SIZE: usize = 8192; // 8KB for hashing
-const MAX_IMAGE_DIMENSION: u32 = 50000; // Maximum dimension we'll try to process
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ImageInfo {
@@ -33,6 +32,7 @@ pub struct ImageInfo {
     pub size: ImageSize,
     pub dimensions: ImageDimensions,
     pub paths: ImagePaths,
+    pub dpi: Option<u32>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -98,6 +98,9 @@ pub async fn get_image_info(image_name: &str, file_path: &str) -> Result<ImageIn
     // Get low-res file size
     let lowres_size = get_file_size(&lowres_path.to_string_lossy())?;
 
+    // Get DPI information
+    let dpi = get_dpi_from_path(file_path);
+
     Ok(ImageInfo {
         image_name: image_name.to_string(),
         size: ImageSize {
@@ -118,6 +121,7 @@ pub async fn get_image_info(image_name: &str, file_path: &str) -> Result<ImageIn
             lowres: lowres_path.to_string_lossy().into(),
             highres: file_path.to_string(),
         },
+        dpi,
     })
 }
 
@@ -191,15 +195,11 @@ fn copy_to_highres(src_path: &str, dst_path: &PathBuf) -> Result<(), String> {
     let mut reader = BufReader::with_capacity(BUFFER_SIZE, file);
     
     // First check dimensions
-    let dimensions = ImageReader::new(&mut reader)
+    let _dimensions = ImageReader::new(&mut reader)
         .with_guessed_format()
         .map_err(|e| format!("Failed to create reader: {}", e))?
         .into_dimensions()
         .map_err(|e| format!("Failed to get dimensions: {}", e))?;
-
-    if dimensions.0 > MAX_IMAGE_DIMENSION || dimensions.1 > MAX_IMAGE_DIMENSION {
-        return Err(format!("Image dimensions too large: {}x{}", dimensions.0, dimensions.1));
-    }
 
     // Reset reader position
     reader.seek(SeekFrom::Start(0))
@@ -247,33 +247,17 @@ fn copy_to_highres(src_path: &str, dst_path: &PathBuf) -> Result<(), String> {
 }
 
 fn get_lowres_image(path: &str) -> Result<Vec<u8>, String> {
-    // Get dimensions first
-    let file = std::fs::File::open(path)
-        .map_err(|e| format!("Failed to open image: {}", e))?;
-    let mut reader = BufReader::with_capacity(BUFFER_SIZE, file);
-    
-    let dimensions = ImageReader::new(&mut reader)
+    let mut reader = ImageReader::open(path)
+        .map_err(|e| format!("Failed to open image: {}", e))?
         .with_guessed_format()
-        .map_err(|e| format!("Failed to create reader: {}", e))?
-        .into_dimensions()
-        .map_err(|e| format!("Failed to get dimensions: {}", e))?;
+        .map_err(|e| format!("Failed to guess image format: {}", e))?;
 
-    if dimensions.0 > MAX_IMAGE_DIMENSION || dimensions.1 > MAX_IMAGE_DIMENSION {
-        return Err(format!("Image dimensions too large: {}x{}", dimensions.0, dimensions.1));
-    }
-
-    let (dst_width, dst_height) = calculate_dimensions(dimensions.0, dimensions.1);
-
-    // Reset reader position
-    reader.seek(SeekFrom::Start(0))
-        .map_err(|e| format!("Failed to reset reader: {}", e))?;
-    
-    let src_image = ImageReader::new(reader)
-        .with_guessed_format()
-        .map_err(|e| format!("Failed to create format reader: {}", e))?
-        .decode()
+    reader.no_limits();
+    let src_image = reader.decode()
         .map_err(|e| format!("Failed to decode image: {}", e))?;
 
+    let dimensions = (src_image.width(), src_image.height());
+    let (dst_width, dst_height) = calculate_dimensions(dimensions.0, dimensions.1);
     process_image_in_chunks(src_image, dst_width, dst_height)
 }
 
@@ -354,7 +338,61 @@ async fn process_single_image(
             lowres: lowres_info.paths.lowres,
             highres: real_highres_path.to_string_lossy().into(),
         },
+        dpi: lowres_info.dpi,
     })
+}
+
+fn calculate_progress(current_step: usize, total_steps: usize) -> f32 {
+    if total_steps == 0 {
+        return 100.0;
+    }
+
+    let progress = (current_step as f32 / total_steps as f32) * 100.0;
+    if progress > 100.0 {
+        100.0
+    } else {
+        progress
+    }
+}
+
+fn get_dpi_from_path(image_path: &str) -> Option<u32> {
+    if let Ok(metadata) = Metadata::new_from_path(image_path) {
+        let x_resolution = metadata.get_tag_string("Exif.Image.XResolution");
+        let y_resolution = metadata.get_tag_string("Exif.Image.YResolution");
+        
+        if let (Ok(x_res), Ok(y_res)) = (x_resolution, y_resolution) {
+            // Parse X resolution
+            let x_resolution_value = x_res.split('/')
+                .map(|x| x.parse::<f64>().unwrap_or(72.0))
+                .collect::<Vec<f64>>();
+            let x_dpi = if x_resolution_value.len() >= 2 && x_resolution_value[1] != 0.0 {
+                x_resolution_value[0] / x_resolution_value[1]
+            } else {
+                72.0
+            };
+
+            // Parse Y resolution
+            let y_resolution_value = y_res.split('/')
+                .map(|x| x.parse::<f64>().unwrap_or(72.0))
+                .collect::<Vec<f64>>();
+            let y_dpi = if y_resolution_value.len() >= 2 && y_resolution_value[1] != 0.0 {
+                y_resolution_value[0] / y_resolution_value[1]
+            } else {
+                72.0
+            };
+
+            // Use the average of X and Y DPI, or just X if they're the same
+            Some(if (x_dpi - y_dpi).abs() < 0.1 {
+                x_dpi as u32
+            } else {
+                ((x_dpi + y_dpi) / 2.0) as u32
+            })
+        } else {
+            Some(72)
+        }
+    } else {
+        Some(72) // Default to 72 DPI if metadata can't be read
+    }
 }
 
 #[tauri::command]
@@ -372,27 +410,79 @@ pub async fn load_and_resize_images(app_handle: AppHandle, channel: Channel) -> 
     let selected_files = file_utils::open_image_dialog(app_handle);
     let start_time = Instant::now();
     
-    // Process images concurrently using tokio
-    let futures: Vec<_> = selected_files.iter()
-        .map(|file_path| process_single_image(file_path, &lowres_dir, &highres_dir))
-        .collect();
-    
-    let results = join_all(futures).await;
-    let image_info_list: Result<Vec<_>, String> = results.into_iter().collect();
-    let image_info_list = image_info_list?;
+    let total_steps = selected_files.len() * 5; // 5 steps per file
+    let mut current_step = 0;
+
+    let mut results = Vec::new();
+    for file_path in selected_files.iter() {
+        // Step 1: Opening and decoding image
+        current_step += 1;
+        let _ = channel.send(tauri::ipc::InvokeResponseBody::Json(serde_json::json!({
+            "event": "progress",
+            "data": {
+                "percentage": calculate_progress(current_step, total_steps),
+                "step": "Opening image"
+            }
+        }).to_string()));
+
+        // Step 2: Processing image
+        current_step += 1;
+        let _ = channel.send(tauri::ipc::InvokeResponseBody::Json(serde_json::json!({
+            "event": "progress",
+            "data": {
+                "percentage": calculate_progress(current_step, total_steps),
+                "step": "Processing image"
+            }
+        }).to_string()));
+
+        let result = process_single_image(file_path, &lowres_dir, &highres_dir).await?;
+
+        // Step 3: Creating low-res version
+        current_step += 1;
+        let _ = channel.send(tauri::ipc::InvokeResponseBody::Json(serde_json::json!({
+            "event": "progress",
+            "data": {
+                "percentage": calculate_progress(current_step, total_steps),
+                "step": "Creating low-res version"
+            }
+        }).to_string()));
+
+        // Step 4: Saving high-res version
+        current_step += 1;
+        let _ = channel.send(tauri::ipc::InvokeResponseBody::Json(serde_json::json!({
+            "event": "progress",
+            "data": {
+                "percentage": calculate_progress(current_step, total_steps),
+                "step": "Saving high-res version"
+            }
+        }).to_string()));
+
+        // Step 5: Extracting metadata
+        current_step += 1;
+        let _ = channel.send(tauri::ipc::InvokeResponseBody::Json(serde_json::json!({
+            "event": "progress",
+            "data": {
+                "percentage": calculate_progress(current_step, total_steps),
+                "step": "Extracting metadata"
+            }
+        }).to_string()));
+
+        results.push(result);
+    }
 
     let end_time = Instant::now();
     let time_taken = end_time.duration_since(start_time);
-    let time_taken_str = format!("{:.2}s", time_taken.as_secs_f64());
     
+    // Send completion message
     let _ = channel.send(tauri::ipc::InvokeResponseBody::Json(serde_json::json!({
-        "event": "load_complete",
+        "event": "complete",
         "data": {
-            "time_taken": time_taken_str
+            "time_taken": format!("{:.2?}", time_taken),
+            "total_files": selected_files.len()
         }
     }).to_string()));
 
-    Ok(image_info_list)
+    Ok(results)
 }
 
 async fn get_hash(file_path: &str) -> String {

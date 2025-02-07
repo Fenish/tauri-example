@@ -1,5 +1,9 @@
 <template>
 	<div class="wrapper">
+		<span>{{ progressText }}</span>
+		<div class="w-full h-5 bg-zinc-800 rounded-md">
+			<div class="h-full bg-orange-500 transition-all duration-300" :style="{ width: progress + '%' }"></div>
+		</div>
 		<div class="image-area">
 			<div class="flex flex-col gap-5">
 				<button class="import-button rust-import-button" @click="importWithRust">
@@ -13,7 +17,7 @@
 				</div>
 			</div>
 
-			<div class="flex flex-col gap-5">
+			<!-- <div class="flex flex-col gap-5">
 				<button class="import-button py-import-button" @click="importWithPython">
 					Import Image With Python
 					<br />
@@ -35,7 +39,15 @@
 				<div class="border-2 border-green-900 p-3 rounded-md">
 					<img :src="convertFileSrc(images.cpp)" class="w-64 h-64" />
 				</div>
-			</div>
+			</div> -->
+		</div>
+
+		<div class="border-2 border-green-900 p-3 rounded-md">
+			<h1 class="text-2xl font-bold">RUST Data</h1>
+			<pre class="text-sm overflow-auto whitespace-pre-wrap bg-zinc-800 p-4 rounded-md mt-2">
+				{{ data.rust }}
+			</pre
+			>
 		</div>
 	</div>
 </template>
@@ -45,6 +57,9 @@ import { invoke, Channel, convertFileSrc } from '@tauri-apps/api/core'
 import { callFunction } from 'tauri-plugin-python-api'
 
 import { onMounted, ref } from 'vue'
+
+const progress = ref(0)
+const progressText = ref('')
 
 const images = ref<any>({
 	rust: '',
@@ -57,10 +72,27 @@ const timeCalcs = ref<any>({
 	cpp: '',
 })
 
+const data = ref<any>({
+	rust: '',
+	python: '',
+	cpp: '',
+})
+
 async function importWithRust() {
 	const rustChannel = new Channel()
 	rustChannel.onmessage = (event: any) => {
-		timeCalcs.value['rust'] = event.data.time_taken
+		if (event.event === 'complete') {
+			timeCalcs.value['rust'] = event.data.time_taken
+		} else if (event.event === 'progress') {
+			progress.value = event.data.percentage
+			progressText.value = event.data.step
+			if (progress.value === 100) {
+				setTimeout(() => {
+					progress.value = 0
+					progressText.value = ''
+				}, 1000)
+			}
+		}
 	}
 
 	const response: any = await invoke('load_and_resize_images', {
@@ -68,6 +100,7 @@ async function importWithRust() {
 	})
 	if (response.length === 0) return
 	images.value['rust'] = response[0].paths.lowres
+	data.value['rust'] = JSON.stringify(response, null, 2)
 }
 
 async function importWithPython() {
